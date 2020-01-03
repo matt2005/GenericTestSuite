@@ -108,14 +108,14 @@ $TestFiles=Get-ChildItem -Path $TestsFolder -Recurse | where {$_.extension -eq '
 Describe 'File Encoding' -Tags 'Files' {
     Context 'Source File Testing' {
         ForEach ($file in $SourceFiles){
-            It ('File: {0} is uft8' -f $file.basename) {
+            It ('File: {0} is utf8' -f $file.basename) {
                 (Get-FileEncoding -Path $file.fullname)| Should bein ('UTF8','ascii')
             }
         }
     }
     Context 'Test File Testing' {
         ForEach ($file in $TestFiles){
-            It ('File: {0} is uft8' -f $file.basename) {
+            It ('File: {0} is utf8' -f $file.basename) {
                 (Get-FileEncoding -Path $file.fullname)| Should bein ('UTF8','ascii')
             }
         }
