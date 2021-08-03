@@ -166,7 +166,6 @@ Describe -Name 'Module Information' -Tags 'Command' -Fixture {
             }
         }
     }
-
     Context -Name 'Public Exports are correct' -Fixture {
         $ModuleData = Get-Module -Name $CompiledModuleManifest.BaseName
 

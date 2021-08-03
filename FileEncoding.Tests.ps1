@@ -1,9 +1,9 @@
 $CompiledModulePath = Resolve-Path -Path ($PSScriptRoot | Split-Path -Parent | Split-Path -Parent)
 $CompiledModuleManifest = Get-ChildItem -Path (Join-Path -Path $CompiledModulePath.Path -ChildPath '*') -include '*.psd1'
 $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Parent | Join-Path -ChildPath $CompiledModuleManifest.BaseName)
-$SourceFiles = Get-ChildItem -Path $ModuleSourceFilePath -Recurse | where { $_.extension -eq '.ps1' }
+$SourceFiles = Get-ChildItem -Path $ModuleSourceFilePath -Recurse | Where-Object { $_.extension -eq '.ps1' }
 $TestsFolder = Resolve-Path -Path ($CompiledModulePath | Split-Path -Parent | Join-Path -ChildPath 'Tests')
-$TestFiles = Get-ChildItem -Path $TestsFolder -Recurse | where { $_.extension -eq '.ps1' }
+$TestFiles = Get-ChildItem -Path $TestsFolder -Recurse | Where-Object { $_.extension -eq '.ps1' }
 
 $sourceFileCases = $SourceFiles.ForEach{
     @{
