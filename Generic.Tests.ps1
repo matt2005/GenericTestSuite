@@ -5,21 +5,6 @@ $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Pa
 Get-Module $CompiledModuleManifest.BaseName | Remove-Module -ErrorAction:SilentlyContinue
 . (Join-Path -Path (Resolve-Path -Path ($PSScriptRoot | Split-Path -Parent | Split-Path -Parent)) -ChildPath '\..\build_utils.ps1')
 
-Function global:GetModuleRequires
-{
-    param(
-        [string]$path
-    )
-    $dscfiles = Get-ChildItem $path -Filter '*.psm1' -Recurse
-    $Requires = @()
-    Foreach ($file in $dscfiles)
-    {
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
-        $Requires += $ast.ScriptRequirements
-    }
-    return $requires
-}
-
 $ModuleRequires = GetModuleRequires -Path $CompiledModulePath\DSCClassResources
 $ModuleRequires += GetModuleRequires -Path $CompiledModulePath\DSCResources
 Foreach ($Requirement in $ModuleRequires)
@@ -58,219 +43,138 @@ $SourceScripts = GetModuleScripts -ModuleName $CompiledModuleManifest.BaseName -
 
 if ($SourceScripts.Public.Functions.count -gt 0)
 {
-    $SourceScripts.Public.Functions.BaseName.ForEach{
-        $functionName = $_
-
-        Describe -Name $functionName -Tags $functionName, "Help" {
-            Context -Name 'Function Help' -Fixture {
-                Import-Module $CompiledModuleManifest.FullName
-
-                $Help = Get-Help -Name $functionName
-
-                $functionTestCases = @{
-                    Synopsis    = $Help.Synopsis
-                    Description = $Help.Description
-                    Examples    = [Array] $Help.Examples
+    $SourceScripts.Public.Functions.BaseName | ForEach-Object {
+        Describe "$_" -Tags "$_", "Help" {
+            Context "Function Help" {
+                $Help = Get-Help $_ | Where { $_.ModuleName -eq $CompiledModuleManifest.BaseName }
+                It 'Synopsis not empty' {
+                    $Help | Select-Object -ExpandProperty synopsis | Should not benullorempty
+                }
+                It "Synopsis should not be auto-generated" -Skip:$( $isLinux ) {
+                    $Help | Select-Object -ExpandProperty synopsis | Should Not BeLike '*`[`<CommonParameters`>`]*'
                 }
 
-                It -Name 'Should have Help Synopsis' -TestCases $functionTestCases -Test {
-                    param
-                    (
-                        $Synopsis
-                    )
-                    $Synopsis | Should -Not -BeNullOrEmpty
+                It 'Description not empty' -Skip:$( $isLinux ) {
+                    $Help | Select-Object -ExpandProperty Description | Should not benullorempty
                 }
-                It -Name 'Should not have Help Synopsis be auto-generated' -Skip:$( $isLinux ) -TestCases $functionTestCases -Test {
-                    param
-                    (
-                        $Synopsis
-                    )
-                    $Synopsis | Should -Not -BeLike '*`[`<CommonParameters`>`]*'
-                }
-
-                It -Name 'Should have Help Description' -Skip:$( $isLinux ) -TestCases $functionTestCases -Test {
-                    param
-                    (
-                        $Description
-                    )
-                    $Description | Should -Not -BeNullOrEmpty
-                }
-                It -Name 'Should have at least one Help Example' -Skip:$( $isLinux ) -TestCases $functionTestCases -Test {
-                    param
-                    (
-                        $Examples
-                    )
-                    $Examples.Count -gt 0 | Should -Be $true
+                It 'Examples Count greater than 0' -Skip:$( $isLinux ) {
+                    $Examples = $Help | Select-Object -ExpandProperty Examples | Measure-Object
+                    $Examples.Count -gt 0 | Should be $true
                 }
             }
-
+            <#
+        Context "PlatyPS Default Help" {
+            It "Synopsis should not be auto-generated - Platyps default"  {
+                Get-Help $_ | Select-Object -ExpandProperty synopsis | Should Not BeLike '*{{Fill in the Synopsis}}*'
+            }
+            It "Description should not be auto-generated - Platyps default" {
+                Get-Help $_ | Select-Object -ExpandProperty Description | Should Not BeLike '*{{Fill in the Description}}*'
+            }
+            It "Example should not be auto-generated - Platyps default" {
+                Get-Help $_ | Select-Object -ExpandProperty Examples | Should Not BeLike '*{{ Add example code here }}*'
+            }
+        }
+#>
             Context "Parameter Help" {
                 # Parameter Help
-                Import-Module $CompiledModuleManifest.FullName
+                $Help = Get-Help $_ | Where { $_.ModuleName -eq $CompiledModuleManifest.BaseName }
+                $HelpObjects = $Help | Select-Object -ExpandProperty Parameters
+                if ( $HelpObjects -ne $null)
+                {
+                    $Parameters = $HelpObjects.Parameter
+                    foreach ($Parameter in $Parameters.Name)
+                    {
+                        $ParameterHelp = $Parameters | Where-Object { $_.name -eq $Parameter }
 
-                $Help = Get-Help -Name $functionName
-
-                $excludeParameters = 'Confirm', 'WhatIf'
-
-                [Array] $functionTestCases = $Help.parameters.parameter.Where{ $_.Name -notin $excludeParameters }.ForEach{
-                    @{
-                        Name        = $_.Name
-                        Description = $_.Description.Text
+                        It "Parameter Help for $Parameter" -Skip:$( $isLinux ) {
+                            $ParameterHelp.description.text | Should not benullorempty
+                        }
                     }
                 }
 
-                if ($functionTestCases.Count -gt 0)
-                {
-                    It -Name 'Should have Parameter Help for <Name>' -Skip:$( $isLinux ) -TestCases $functionTestCases -Test {
-                        param
-                        (
-                            $Description
-                        )
-                        $Description | Should -Not -BeNullOrEmpty
-                    }
-                }
+            }
 
-                $command = Get-Command -Name $functionName
-
-                if ($command.Verb -eq 'Get')
-                {
-                    It -Name 'Should have OutputType Present when verb is Get' -TestCases @{OutputType = $command.OutputType } -Test {
-                        param
-                        (
-                            $OutputType
-                        )
-                        $OutputType | Should -Not -BeNullOrEmpty
+            # Output Type if Verb is 'Get'
+            if ( $_.Verb -eq "Get")
+            {
+                Context "OutputType - $_" {
+                    It "OutputType Present on verb Get" {
+                        (Get-Command $_).OutputType | Should not benullorempty
                     }
                 }
             }
+
         }
     }
 }
-Describe -Name 'Module Information' -Tags 'Command' -Fixture {
-    Context -Name 'Manifest Testing' -Fixture {
-        $manifestFile = @{
-            Path     = $CompiledModuleManifest.FullName
-            BaseName = $CompiledModuleManifest.BaseName
+Describe 'Module Information' -Tags 'Command' {
+    Context 'Manifest Testing' {
+        It 'Valid Module Manifest' {
+            {
+                $Script:Manifest = Test-ModuleManifest -Path $CompiledModuleManifest.FullName -ErrorAction Stop -WarningAction SilentlyContinue
+            } | Should Not Throw
         }
 
-        It -Name 'Should not throw an error when running Test-ModuleManifest' -TestCases $manifestFile -Test {
-            param
-            (
-                $Path
-            )
-            { $Script:Manifest = Test-ModuleManifest -Path $Path -ErrorAction Stop -WarningAction SilentlyContinue } |
-            Should -Not -Throw
+        It 'Test-ModuleManifest' {
+            Test-ModuleManifest -Path $CompiledModuleManifest.FullName
+            $? | Should Be $true
         }
 
-        It -Name 'Should have a valid Module Manifest file' -TestCases $manifestFile -Test {
-            param
-            (
-                $Path
-            )
-            Test-ModuleManifest -Path $Path | Should -Be $true
+        It 'Valid Manifest Name' {
+            $Script:Manifest.Name | Should be $CompiledModuleManifest.BaseName
         }
-
-        It -Name 'Should have the Manifest Name match the file name' -TestCases $manifestFile -Test {
-            param
-            (
-                $BaseName
-            )
-            $Manifest.Name | Should -Be $BaseName
+        It 'Generic Version Check' {
+            $Script:Manifest.Version -as [Version] | Should Not BeNullOrEmpty
         }
-
-        It -Name 'Should have a valid Manifest Version number' -Test {
-            $Manifest.Version -as [Version] | Should -Not -BeNullOrEmpty
+        It 'Valid Manifest Description' {
+            $Script:Manifest.Description | Should Not BeNullOrEmpty
         }
-
-        It -Name 'Should have a valid Manifest Description' -Test {
-            $Manifest.Description | Should -Not -BeNullOrEmpty
+        <#        It 'Valid Manifest Root Module' {
+            $Script:Manifest.RootModule | Should Be ('{0}.psm1' -f $CompiledModuleManifest.BaseName)
         }
-
-        It -Name 'Should have a valid Manifest GUID' -Test {
-            ($Manifest.guid).GetType().Name | Should -Be 'Guid'
+#>
+        It 'Valid Manifest GUID' {
+            ($Script:Manifest.guid).gettype().name | Should be 'Guid'
         }
-
-        if ($SourceScripts.Formats.Count -gt 0)
+        IF ($SourceScripts.Formats.count -gt 0)
         {
-            param
-            (
-                $Manifest
-            )
-            It -Name 'Should have FormatsToProcess set in the Manifest when the source contains Formats' -Test {
-                $Manifest.FormatsToProcess | Should -Not -BeNullOrEmpty
+            It 'Process Format File' {
+                $Script:Manifest.FormatsToProcess | Should not BeNullOrEmpty
             }
         }
-
-        if ($SourceScripts.Types.Count -gt 0)
+        IF ($SourceScripts.Types.count -gt 0)
         {
-            It -Name 'Should have TypesToProcess set in the Manifest when the source contains Types' -Test {
-                param
-                (
-                    $Manifest
-                )
-                $Manifest.TypesToProcess | Should -Not -BeNullOrEmpty
+            It 'Process Type Files' {
+                $Script:Manifest.TypesToProcess | Should not BeNullOrEmpty
             }
         }
     }
 
-    Context -Name 'Public Exports are correct' -Fixture {
-        $ModuleData = Get-Module -Name $CompiledModuleManifest.BaseName
-
-        $exportCounts = @{
-            ExportedAliasesCount   = ([Array] $ModuleData.ExportedAliases.Keys).Count
-            ExportedFunctionsCount = ([Array] $ModuleData.ExportedFunctions.Keys).Count
-            ExportedVariablesCount = ([Array] $ModuleData.ExportedVariables.Keys).Count
-            SourceAliasesCount     = ([Array] $SourceScripts.Public.Aliases).Count
-            SourceFunctionsCount   = ([Array] $SourceScripts.Public.Functions).Count
-            SourceVariablesCount   = ([Array] $SourceScripts.Public.Variables).Count
+    Context 'Public Exports are correct' {
+        $ModuleData = (Get-Module -Name $CompiledModuleManifest.BaseName)
+        It 'Correct Number of Aliases Exported' {
+            $ExportedCount = $ModuleData.ExportedAliases.Count
+            $FileCount = $SourceScripts.Public.Aliases | Measure-Object | Select-Object -ExpandProperty Count
+            $ExportedCount | Should be $FileCount
         }
-
-        It -Name 'Should have the same count for Aliases in the module and the source files' -TestCases $exportCounts -Test {
-            param
-            (
-                $ExportedAliasesCount,
-                $SourceAliasesCount
-            )
-            $ExportedAliasesCount | Should -Be $SourceAliasesCount
+        It 'Correct Number of Variables Exported' {
+            $ExportedCount = $ModuleData.ExportedVariables.Count
+            $FileCount = $SourceScripts.Public.Variables | Measure-Object | Select-Object -ExpandProperty Count
+            $ExportedCount | Should be $FileCount
         }
-
-        It -Name 'Should have the same count for Variables in the module and the source files' -TestCases $exportCounts -Test {
-            param
-            (
-                $ExportedVariablesCount,
-                $SourceVariablesCount
-            )
-            $ExportedVariablesCount | Should -Be $SourceVariablesCount
-        }
-
-        It -Name 'Should have the same count for Functions in the module and the source files' -TestCases $exportCounts -Test {
-            param
-            (
-                $ExportedFunctionsCount,
-                $SourceFunctionsCount
-            )
-            $ExportedFunctionsCount | Should -Be $SourceFunctionsCount
+        It 'Correct Number of Functions Exported' {
+            $ExportedCount = $ModuleData.ExportedFunctions.Count
+            $FileCount = $SourceScripts.Public.Functions | Measure-Object | Select-Object -ExpandProperty Count
+            $ExportedCount | Should be $FileCount
         }
     }
-    Context -Name 'Module files signed Correctly' -Fixture {
-
-        $codeFiles = Get-ChildItem -Path $CompiledModulePath -Filter '*.ps*1*'
-
-        $fileSignatureTestCases = $codeFiles.ForEach{
-            @{
-                Name     = $_.Name
-                FullName = $_.FullName
+    Context 'Module files signed Correctly' {
+        Foreach ($file in (Get-ChildItem -Path $CompiledModulePath -filter '*.ps*1*'))
+        {
+            It -Name ('Verfiy Signature on {0}' -f $file.Name) -Test {
+                (Get-AuthenticodeSignature -FilePath $file.FullName).Status | Should -BeExactly 'Valid'
             }
         }
-
-        It -Name 'Should have a valid signature on <Name>' -TestCases $fileSignatureTestCases -Test {
-            param
-            (
-                $FullName
-            )
-            (Get-AuthenticodeSignature -FilePath $FullName).Status | Should -BeExactly 'Valid'
-        }
-
         #$CatalogFile=(Get-ChildItem -Path $CompiledModulePath -filter '*.cat')
         #It -Name ('Verify Catalog file valid: {0}' -f $CatalogFile.Name) -Test {
         #	(Test-FileCatalog -CatalogFilePath $CatalogFile.FullName -Path $CompiledModulePath).Status | Should -Be 'Valid'
@@ -278,4 +182,4 @@ Describe -Name 'Module Information' -Tags 'Command' -Fixture {
     }
 }
 
-Get-Module -Name $CompiledModuleManifest.BaseName -All | Remove-Module
+Remove-Module $CompiledModuleManifest.BaseName
