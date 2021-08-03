@@ -5,6 +5,37 @@ $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Pa
 Get-Module $CompiledModuleManifest.BaseName | Remove-Module -ErrorAction:SilentlyContinue
 . (Join-Path -Path (Resolve-Path -Path ($PSScriptRoot | Split-Path -Parent | Split-Path -Parent)) -ChildPath '\..\build_utils.ps1')
 
+$ModuleRequires = GetModuleRequires -Path $CompiledModulePath\DSCClassResources
+$ModuleRequires += GetModuleRequires -Path $CompiledModulePath\DSCResources
+Foreach ($Requirement in $ModuleRequires)
+{
+    IF ($null -ne $Requirement.RequiredModules)
+    {
+        foreach ($RequiredModule in $Requirement.RequiredModules)
+        {
+            $DummyModuleParams = @{
+                Path          = ('{0}\{1}.psd1' -f $env:temp, $RequiredModule.Name)
+                ModuleVersion = '1.0.0'
+                Author        = 'PESTER'
+            }
+            IF ($null -ne $RequiredModule.Version)
+            {
+                $DummyModuleParams.ModuleVersion = $RequiredModule.Version
+            }
+            IF ($null -ne $RequiredModule.MaximumVersion)
+            {
+                $DummyModuleParams.ModuleVersion = $RequiredModule.MaximumVersion
+            }
+            IF ($null -ne $RequiredModule.RequiredVersion)
+            {
+                $DummyModuleParams.ModuleVersion = $RequiredModule.RequiredVersion
+            }
+            New-ModuleManifest @DummyModuleParams
+            Import-Module -Global $DummyModuleParams.Path -Force
+        }
+    }
+}
+
 Import-Module $CompiledModuleManifest.FullName
 
 # ModuleScripts
