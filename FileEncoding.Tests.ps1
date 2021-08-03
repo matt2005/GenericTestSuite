@@ -4,23 +4,7 @@ $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Pa
 $SourceFiles = Get-ChildItem -Path $ModuleSourceFilePath -Recurse | where { $_.extension -eq '.ps1' }
 $TestsFolder = Resolve-Path -Path ($CompiledModulePath | Split-Path -Parent | Join-Path -ChildPath 'Tests')
 $TestFiles = Get-ChildItem -Path $TestsFolder -Recurse | where { $_.extension -eq '.ps1' }
-
-$sourceFileCases = $SourceFiles.ForEach{
-    @{
-        BaseName = $_.BaseName
-        FullName = $_.FullName
-    }
-}
-$testFileCases = $TestFiles.ForEach{
-    @{
-        BaseName = $_.BaseName
-        FullName = $_.FullName
-    }
-}
-
-Describe 'File Encoding' -Tags 'Files' {
-    BeforeAll -Scriptblock {
-        function Get-FileEncoding
+function global:Get-FileEncoding
         {
             <#
             .SYNOPSIS
@@ -147,6 +131,23 @@ Describe 'File Encoding' -Tags 'Files' {
             else
             { if ($legacyEncoding) { 'ascii' } else { [System.Text.Encoding]::ASCII } }
         }
+
+$sourceFileCases = $SourceFiles.ForEach{
+    @{
+        BaseName = $_.BaseName
+        FullName = $_.FullName
+    }
+}
+$testFileCases = $TestFiles.ForEach{
+    @{
+        BaseName = $_.BaseName
+        FullName = $_.FullName
+    }
+}
+
+Describe 'File Encoding' -Tags 'Files' {
+    BeforeAll -Scriptblock {
+        
     }
 
     Context -Name 'Source File Testing' -Fixture {
