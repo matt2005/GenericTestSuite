@@ -4,7 +4,20 @@ $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Pa
 
 Get-Module $CompiledModuleManifest.BaseName | Remove-Module -ErrorAction:SilentlyContinue
 . (Join-Path -Path (Resolve-Path -Path ($PSScriptRoot | Split-Path -Parent | Split-Path -Parent)) -ChildPath '\..\build_utils.ps1')
-
+Function GetModuleRequires
+{
+    param(
+        [string]$path
+    )
+    $dscfiles = Get-ChildItem $path -Filter '*.psm1' -Recurse
+    $Requires = @()
+    Foreach ($file in $dscfiles)
+    {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null)
+        $Requires += $ast.ScriptRequirements
+    }
+    return $requires
+}
 $ModuleRequires = GetModuleRequires -Path $CompiledModulePath\DSCClassResources
 $ModuleRequires += GetModuleRequires -Path $CompiledModulePath\DSCResources
 Foreach ($Requirement in $ModuleRequires)
