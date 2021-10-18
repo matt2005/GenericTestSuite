@@ -117,7 +117,7 @@ Describe 'File Encoding' -Tags 'Files' {
         ForEach ($file in $SourceFiles)
         {
             It ('File: {0} is utf8' -f $file.basename) {
-                (Get-FileEncoding -Path $file.fullname).BodyName | Should bein ('UTF8', 'ascii', 'us-ascii')
+                (Get-FileEncoding -Path $file.fullname).BodyName | Should bein ('UTF8','utf-8', 'ascii', 'us-ascii')
             }
         }
     }
@@ -125,7 +125,7 @@ Describe 'File Encoding' -Tags 'Files' {
         ForEach ($file in $TestFiles)
         {
             It ('File: {0} is utf8' -f $file.basename) {
-                (Get-FileEncoding -Path $file.fullname).BodyName | Should bein ('UTF8', 'ascii', 'us-ascii')
+                (Get-FileEncoding -Path $file.fullname).BodyName | Should bein ('UTF8','utf-8', 'ascii', 'us-ascii')
             }
         }
     }
