@@ -175,23 +175,27 @@ Describe 'Module Information' -Tags 'Command' {
             $FileCount = $SourceScripts.Public.Variables | Measure-Object | Select-Object -ExpandProperty Count
             $ExportedCount | Should be $FileCount
         }
-#        It 'Correct Number of Functions Exported' {
-#            $ExportedCount = $ModuleData.ExportedFunctions.Count
-#            $FileCount = $SourceScripts.Public.Functions | Measure-Object | Select-Object -ExpandProperty Count
-#            $ExportedCount | Should be $FileCount
-#        }
+        #        It 'Correct Number of Functions Exported' {
+        #            $ExportedCount = $ModuleData.ExportedFunctions.Count
+        #            $FileCount = $SourceScripts.Public.Functions | Measure-Object | Select-Object -ExpandProperty Count
+        #            $ExportedCount | Should be $FileCount
+        #        }
     }
-    Context 'Module files signed Correctly' {
-        Foreach ($file in (Get-ChildItem -Path $CompiledModulePath -filter '*.ps*1*'))
-        {
-            It -Name ('Verfiy Signature on {0}' -f $file.Name) -Test {
+    $SiginingCert = $(Get-ChildItem Cert:\CurrentUser\My -codesign)
+    IF ($null -ne $SiginingCert)
+    {
+        Context 'Module files signed Correctly' {
+            Foreach ($file in (Get-ChildItem -Path $CompiledModulePath -filter '*.ps*1*'))
+            {
+                It -Name ('Verfiy Signature on {0}' -f $file.Name) -Test {
                 (Get-AuthenticodeSignature -FilePath $file.FullName).Status | Should -BeExactly 'Valid'
+                }
             }
+            #$CatalogFile=(Get-ChildItem -Path $CompiledModulePath -filter '*.cat')
+            #It -Name ('Verify Catalog file valid: {0}' -f $CatalogFile.Name) -Test {
+            #	(Test-FileCatalog -CatalogFilePath $CatalogFile.FullName -Path $CompiledModulePath).Status | Should -Be 'Valid'
+            #}
         }
-        #$CatalogFile=(Get-ChildItem -Path $CompiledModulePath -filter '*.cat')
-        #It -Name ('Verify Catalog file valid: {0}' -f $CatalogFile.Name) -Test {
-        #	(Test-FileCatalog -CatalogFilePath $CatalogFile.FullName -Path $CompiledModulePath).Status | Should -Be 'Valid'
-        #}
     }
 }
 
