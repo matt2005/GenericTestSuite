@@ -1,111 +1,106 @@
 function Get-FileEncoding
 {
-    <# .SYNOPSIS Gets file encoding.
-.DESCRIPTION The Get-FileEncoding function determines encoding by looking at Byte Order Mark (BOM). Based on port of C# code from http://www.west-wind.com/Weblog/posts/197245.aspx
-.EXAMPLE
- Get-ChildItem c:\ws\git_repos\COMPONENT_TEMPLATE -recurse -File |
-    select FullName, @{n='Encoding';e={Get-FileEncoding $_.FullName}}
+	<#
+	.SYNOPSIS
+		Gets file encoding.
+	.DESCRIPTION
+		The Get-FileEncoding function determines encoding by looking at Byte Order Mark (BOM).
+		Based on port of C# code from http://www.west-wind.com/Weblog/posts/197245.aspx
+	.OUTPUTS
+		System.Text.Encoding
+	.PARAMETER Path
+		The Path of the file that we want to check.
+	.PARAMETER DefaultEncoding
+		The Encoding to return if one cannot be inferred.
+		You may prefer to use the System's default encoding:  [System.Text.Encoding]::Default
+		List of available Encodings is available here: http://goo.gl/GDtzj7
+	.EXAMPLE
+		# This command gets ps1 files in current directory where encoding is not ASCII
+		Get-ChildItem  *.ps1 | select FullName, @{n='Encoding';e={Get-FileEncoding $_.FullName}} | where {[string]$_.Encoding -ne 'System.Text.ASCIIEncoding'}
+	.EXAMPLE
+		# Same as previous example but fixes encoding using set-content
+		Get-ChildItem  *.ps1 | select FullName, @{n='Encoding';e={Get-FileEncoding $_.FullName}} | where {[string]$_.Encoding -ne 'System.Text.ASCIIEncoding'} | foreach {(get-content $_.FullName) | set-content $_.FullName -Encoding ASCII}
+	.NOTES
+		Version History
+		v1.0   - 2010/08/10, Chad Miller - Initial release
+		v1.1   - 2010/08/16, Jason Archer - Improved pipeline support and added detection of little endian BOMs. (http://poshcode.org/2075)
+		v1.2   - 2015/02/03, VertigoRay - Adjusted to use .NET's [System.Text.Encoding Class](http://goo.gl/XQNeuc). (http://poshcode.org/5724)
+	.LINK
+		http://goo.gl/bL12YV
+	#>
 
-$erroractionpreference = 'stop'
-  Get-ChildItem c:\ws\git_repos\COMPONENT_TEMPLATE -recurse -File |
-    foreach {
-        Write-Output $_.FullName
-        Get-FileEncoding $_.FullName
-    }
+	[CmdletBinding()]
+	param
+	(
+		[Alias('PSPath')]
+		[Parameter(Mandatory, ParameterSetName = 'Default')]
+		[System.String]
+		$Path,
 
-     This command gets ps1 files in current directory where encoding is not ASCII
+		[Parameter(Mandatory, ValueFromPipeline, ParameterSetName = 'Pipeline')]
+		[System.IO.FileInfo]
+		$File,
 
- .EXAMPLE Get-ChildItem *.ps1 |
-     select FullName, @{n='Encoding';e={Get-FileEncoding $_.FullName}} |
-         where {$_.Encoding -ne 'ASCII'} foreach {(get-content $_.FullName) | set-content $_.FullName -Encoding ASCII}
+		[Parameter(Mandatory = $False)]
+		[System.Text.Encoding]
+		$DefaultEncoding = [System.Text.Encoding]::ASCII
+	)
 
-         Same as previous example but fixes encoding using set-content #>
-    # Modified by F.RICHARD August 2010
-    # add comment + more BOM
-    # http://unicode.org/faq/utf_bom.html
-    # http://en.wikipedia.org/wiki/Byte_order_mark
-    #
-    # Do this next line before or add function in Profile.ps1
-    # Import-Module .\Get-FileEncoding.ps1
-    #>
-    [CmdletBinding()]
-    Param (
-        [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName = $True)]
-        [string]$Path
-    )
-    $legacyEncoding = $false
-    try
-    {
-        try
-        {
-            [byte[]]$byte = get-content -AsByteStream -ReadCount 4 -TotalCount 4 -LiteralPath $Path
+	process
+	{
+		if ($PSCmdlet.ParameterSetName -eq 'Pipeline')
+		{
+			$Path = $File.FullName
+		}
 
-        }
-        catch
-        {
-            [byte[]]$byte = get-content -Encoding Byte -ReadCount 4 -TotalCount 4 -LiteralPath $Path
-            $legacyEncoding = $true
-        }
+		Write-Verbose -Message (Split-Path -Path $Path -Leaf)
 
-        if (-not $byte)
-        {
-            if ($legacyEncoding) { "unknown" } else { [System.Text.Encoding]::Default }
-        }
-    }
-    catch
-    {
-        throw
-    }
+		if ($PSVersionTable.PSEdition -eq 'Core')
+		{
+			[System.Byte[]] $bom = Get-Content -AsByteStream -ReadCount 4 -TotalCount 4 -Path $Path
+		}
+		else
+		{
+			[System.Byte[]] $bom = Get-Content -Encoding 'Byte' -ReadCount 4 -TotalCount 4 -Path $Path
+		}
 
-    #Write-Host Bytes: $byte[0] $byte[1] $byte[2] $byte[3]
+		if ($bom.Length -eq 0)
+		{
+			Write-Verbose -Message 'File is empty'
+			return
+		}
 
-    # EF BB BF (UTF8)
-    if ( $byte[0] -eq 0xef -and $byte[1] -eq 0xbb -and $byte[2] -eq 0xbf )
-    { if ($legacyEncoding) { "UTF8" } else { [System.Text.Encoding]::UTF8 } }
+		$encoding_found = $false
 
-    # FE FF  (UTF-16 Big-Endian)
-    elseif ($byte[0] -eq 0xfe -and $byte[1] -eq 0xff)
-    { if ($legacyEncoding) { "bigendianunicode" } else { [System.Text.Encoding]::BigEndianUnicode } }
+		foreach ($encoding in [System.Text.Encoding]::GetEncodings().GetEncoding())
+		{
+			$preamble = $encoding.GetPreamble()
 
-    # FF FE  (UTF-16 Little-Endian)
-    elseif ($byte[0] -eq 0xff -and $byte[1] -eq 0xfe)
-    { if ($legacyEncoding) { "unicode" } else { [System.Text.Encoding]::Unicode } }
+			if ($preamble)
+			{
+				foreach ($i in 0..$preamble.Length)
+				{
+					if ($preamble[$i] -ne $bom[$i])
+					{
+						break
+					}
+					elseif ($i -eq $preable.Length)
+					{
+						$encoding_found = $encoding
+					}
+				}
+			}
+		}
 
-    # 00 00 FE FF (UTF32 Big-Endian)
-    elseif ($byte[0] -eq 0 -and $byte[1] -eq 0 -and $byte[2] -eq 0xfe -and $byte[3] -eq 0xff)
-    { if ($legacyEncoding) { "utf32" } else { [System.Text.Encoding]::UTF32 } }
+		if ($encoding_found -eq $false)
+		{
+			$encoding_found = $DefaultEncoding
+		}
 
-    # FE FF 00 00 (UTF32 Little-Endian)
-    elseif ($byte[0] -eq 0xfe -and $byte[1] -eq 0xff -and $byte[2] -eq 0 -and $byte[3] -eq 0)
-    { if ($legacyEncoding) { "utf32" } else { [System.Text.Encoding]::UTF32 } }
-
-    # 2B 2F 76 (38 | 38 | 2B | 2F)
-    elseif ($byte[0] -eq 0x2b -and $byte[1] -eq 0x2f -and $byte[2] -eq 0x76 -and ($byte[3] -eq 0x38 -or $byte[3] -eq 0x39 -or $byte[3] -eq 0x2b -or $byte[3] -eq 0x2f) )
-    { if ($legacyEncoding) { "utf7" } else { [System.Text.Encoding]::UTF7 } }
-
-    # F7 64 4C (UTF-1)
-    elseif ( $byte[0] -eq 0xf7 -and $byte[1] -eq 0x64 -and $byte[2] -eq 0x4c )
-    { throw "UTF-1 not a supported encoding" }
-
-    # DD 73 66 73 (UTF-EBCDIC)
-    elseif ($byte[0] -eq 0xdd -and $byte[1] -eq 0x73 -and $byte[2] -eq 0x66 -and $byte[3] -eq 0x73)
-    { throw "UTF-EBCDIC not a supported encoding" }
-
-    # 0E FE FF (SCSU)
-    elseif ( $byte[0] -eq 0x0e -and $byte[1] -eq 0xfe -and $byte[2] -eq 0xff )
-    { throw "SCSU not a supported encoding" }
-
-    # FB EE 28  (BOCU-1)
-    elseif ( $byte[0] -eq 0xfb -and $byte[1] -eq 0xee -and $byte[2] -eq 0x28 )
-    { throw "BOCU-1 not a supported encoding" }
-
-    # 84 31 95 33 (GB-18030)
-    elseif ($byte[0] -eq 0x84 -and $byte[1] -eq 0x31 -and $byte[2] -eq 0x95 -and $byte[3] -eq 0x33)
-    { throw "GB-18030 not a supported encoding" }
-
-    else
-    { if ($legacyEncoding) { "ascii" } else { [System.Text.Encoding]::ASCII } }
+		$encoding_found
+	}
 }
+
 $CompiledModulePath = Resolve-Path -Path ($PSScriptRoot | Split-Path -Parent | Split-Path -Parent)
 $CompiledModuleManifest = (Get-ChildItem -Path (Join-Path -Path $CompiledModulePath.Path -ChildPath '*') -include '*.psd1')
 $ModuleSourceFilePath = Resolve-Path -Path ($CompiledModulePath | Split-Path -Parent | Join-Path -ChildPath $CompiledModuleManifest.BaseName)
