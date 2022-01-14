@@ -185,6 +185,8 @@ Describe 'Module Information' -Tags 'Command' {
     IF ($null -ne $SiginingCert)
     {
         Context 'Module files signed Correctly' {
+			IF ($env:GIT_BRANCH)
+			{
             Foreach ($file in (Get-ChildItem -Path $CompiledModulePath -filter '*.ps*1*'))
             {
                 It -Name ('Verfiy Signature on {0}' -f $file.Name) -Test {
@@ -195,6 +197,7 @@ Describe 'Module Information' -Tags 'Command' {
             #It -Name ('Verify Catalog file valid: {0}' -f $CatalogFile.Name) -Test {
             #	(Test-FileCatalog -CatalogFilePath $CatalogFile.FullName -Path $CompiledModulePath).Status | Should -Be 'Valid'
             #}
+			}
         }
     }
 }
